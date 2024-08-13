@@ -4,7 +4,7 @@ This repository contains the DHNs with their graph views, python codes and resul
 
 ## Training DHNs
 
-Four different DHNs have been used to train and prior-evaluate the proposed clustering process. In this context, 'training' refers to consider and train all possible clusters obtained from the clustering process using every distance threshold in [0.1 - 0.99]. The training procedures of the clusters are described in our previous article ![link](https://www.sciencedirect.com/science/article/pii/S2666546824000594?via%3Dihub). Training codes and necessary data are also available ![here](https://github.com/drod-96/smart_clusters_v1).
+Four different DHNs have been used to train and prior-evaluate the proposed clustering process. In this context, 'training' refers to consider and train all possible clusters obtained from the clustering process using every distance threshold in [0.1 - 0.99]. The training procedures of the clusters are described in our previous article [link](https://www.sciencedirect.com/science/article/pii/S2666546824000594?via%3Dihub). Training codes and necessary data are also available [here](https://github.com/drod-96/smart_clusters_v1).
 
 ### Training graph 1
 
