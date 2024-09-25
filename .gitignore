@@ -1,0 +1,24 @@
+# folders
+__pycache__/
+.env_clustering/
+.vs_code/
+article_results/
+brouillons/
+clustering_saved/
+data_results_xlsx_files/
+images_dhns/
+new_clusters/
+pickled_dhns/
+trained_mls/
+
+
+# files
+A-generate_new_clusters.ipynb
+B-study_bad_good_clusters_features_time_series.ipynb
+C-read_trained_ml_perfs.ipynb
+D-hierarchical_cluster_generation_training.ipynb
+D-hierarchical_clustering_cleaned.ipynb
+E-automatic_clusters_generation_dhns.ipynb
+test.pdf
+test.svg
+*.json
