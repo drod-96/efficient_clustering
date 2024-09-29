@@ -14,7 +14,9 @@ python -m pip install -r requirements.txt
 
 # Codes sources
 
-All code sources can be found in [the source folder](src/). An example of performing the clustering is proposed in the proposed example.ipynb which presents in great details how to perform the clustering. We recall to the readers that the physical simulation states data of the DHNs are not available in this repository due to their memory sizes. However, they can be made available at request.
+All code sources can be found in [the source folder](src/). An example of performing the clustering is proposed in the proposed example.ipynb which presents in great details how to perform the clustering. We recall to the readers that the physical simulation states data of the DHNs are not available in this repository due to their memory sizes. However, they can be made available at request. 
+
+We provide an illustration example in the notebook [example](example.ipynb). This illustration uses the DHN with indicator 1.
 
 
 # License
