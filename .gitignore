@@ -4,7 +4,8 @@ __pycache__/
 .vs_code/
 article_results/
 brouillons/
-clustering_saved/
+clustering_saved/*
+!clustering_saved/dhn_1/
 data_results_xlsx_files/.xslx_files/
 images_dhns/
 new_clusters/
@@ -21,5 +22,6 @@ D-hierarchical_clustering_cleaned.ipynb
 E-automatic_clusters_generation_dhns.ipynb
 test.pdf
 test.svg
+clustering_saved/dhn_1/clustering_results.csv
 
 *.json
