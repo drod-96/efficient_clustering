@@ -432,6 +432,28 @@ class ClusteringDHN(object):
     #endregion
     
     #region Performing the clustering
+    def perform_clustering_one_shot(self, alpha: float, gamma: float, delta: float):
+        print(f'Performing the clustering for DHN {self.dhn_indicator} .....')
+        
+        distance_matrix_to_use = None
+        
+        if alpha not in self.task_driven_distance_matrix:
+            self.task_driven_distance_matrix[alpha] = {}
+            self.task_driven_distance_matrix[alpha][gamma] = self._compute_distance_matrix(alpha=alpha, gamma=gamma)
+            
+        elif gamma not in self.task_driven_distance_matrix[alpha]:
+            self.task_driven_distance_matrix[alpha][gamma] = self._compute_distance_matrix(alpha=alpha, gamma=gamma)
+        
+        distance_matrix_to_use = self.task_driven_distance_matrix[alpha][gamma]
+        distance_matrix = distance_matrix_to_use.copy()
+            
+        model_agglo = HAgglo(n_clusters=None, metric='precomputed', linkage='single', distance_threshold=delta)
+        model_agglo.fit(distance_matrix)
+        clustering_labels = model_agglo.labels_
+        
+        list_clusters = self._create_list_clusters_from_labels_clustering(clustering_labels)
+        return list_clusters
+
     def perform_clustering(self, alpha: float, gamma: float):
     
         print(f'Performing the clustering for DHN {self.dhn_indicator}  with gamma={gamma} and alpha={alpha} - - - ->')

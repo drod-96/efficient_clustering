@@ -5,7 +5,7 @@ __pycache__/
 article_results/
 brouillons/
 clustering_saved/
-data_results_xlsx_files/
+data_results_xlsx_files/.xslx_files/
 images_dhns/
 new_clusters/
 pickled_dhns/

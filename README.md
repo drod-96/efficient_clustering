@@ -2,7 +2,7 @@ This repository contains the codes, data and major results of our proposed clust
 
 # Studied DHNs
 
-17 DHNs have been studied in this work. The topology files and visualisation figures can be found in [the studied DHNs folder](studied_dhns/)
+17 DHNs have been studied in this work. The topology files and visualisation figures can be found in [the studied DHNs folder](studied_dhns/). Substation nodes are represented by circles, red-filled for heat sources and white-filled for heat consumers. The edges represent the pair of pipes (supply and return) which directions follow the supply pipes directions. Edges are colored in black. However, we indicate in red dashed the edges which pipes have flux inversions. 
 
 # Requirements
 
