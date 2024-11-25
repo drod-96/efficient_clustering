@@ -15,12 +15,12 @@ In our **paper**, we propose an unsupervised clustering-based approach to identi
 
 # Repository 
 
-This repository contains the obtained results presented in our paper, the data used and the codes to reproduced our results.
+This repository contains the obtained results presented in our paper, the data used and the codes for reproducibility.
 
 
 ## Case study DHNs
 
-The study investigates the performances of the proposed approach on *17* different DHNs (i.e., sizes, thermal demands, etc.). The topology files and visualisation figures can be found in [the studied DHNs folder](studied_dhns/). In our approach, the DHN is viewed as one-layered directed graph times series on the nodes and edges.
+The study investigates the performance of the proposed approach on *17* different DHNs (i.e., sizes, thermal demands, etc.). The topology files and visualisation figures can be found in [the studied DHNs folder](studied_dhns/). In our approach, the DHN is viewed as one-layered directed graph with times series signals on the nodes and edges.
 
 - **Nodes** represent heat <span style="color:blue">consumers</span>, heat <span style="color:red">producers</span> or pipes junctions points
 - **Edges** represent both identifical supply and return pipes oriented along the supply pipes
