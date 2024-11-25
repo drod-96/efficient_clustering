@@ -1,6 +1,6 @@
 District Heating Networks (DHNs) are flexibile and efficient heat delivery systems. Through the last decades, these systems have gained popular interests from European contries. DHNs provide low cost solutions to incorporate renewable sources in heat production and contributing to CO2 reductions inline with the EU [2050 climat-neutral objective](https://climate.ec.europa.eu/eu-action/climate-strategies-targets/2050-long-term-strategy_en). 
 
-![DHN illustration, credit to Engie](illustration/DHN_illustration.png)
+![DHN illustration, credit to Engie](illustration/DHN_illustration.png "DHN illustration, credit to Engie")
 
 # Objective
 
