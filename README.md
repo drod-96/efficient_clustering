@@ -10,7 +10,7 @@ Major problematic faced by DHNs operators come from the high computational costs
 In our **paper**, we propose an unsupervised clustering-based approach to identify `similar' substation nodes which are replaced by trained *AI models*. A task-driven distance metric has been introduced to quantify such **similarty**.
 
 
-![Proposed clustering](illustration/image.svg)
+![Proposed clustering](illustration/image.svg "Proposed clustering illustration")
 
 
 # Repository 
