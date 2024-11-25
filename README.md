@@ -20,7 +20,12 @@ This repository contains the obtained results presented in our paper, the data u
 
 ## Case study DHNs
 
-17 DHNs have been studied in this work. The topology files and visualisation figures can be found in [the studied DHNs folder](studied_dhns/). Substation nodes are represented by circles, red-filled for heat sources and white-filled for heat consumers. The edges represent the pair of pipes (supply and return) which directions follow the supply pipes directions. Edges are colored in black. However, we indicate in red dashed the edges which pipes have flux inversions. 
+The study investigates the performances of the proposed approach on *17* different DHNs (i.e., sizes, thermal demands, etc.). The topology files and visualisation figures can be found in [the studied DHNs folder](studied_dhns/). In our approach, the DHN is viewed as one-layered directed graph times series on the nodes and edges.
+
+- **Nodes** represent heat <span style="color:blue">consumers</span>, heat <span style="color:red">producers</span> or pipes junctions points
+- **Edges** represent both identifical supply and return pipes oriented along the supply pipes
+
+Edges are colored in black. However, we indicate in red dashed the edges which pipes have flux inversions. 
 
 
 ## Packages installation
