@@ -2,6 +2,7 @@
 __pycache__/
 .env_clustering/
 .vs_code/
+.new_env/
 article_results/
 brouillons/
 clustering_saved/*
@@ -11,7 +12,7 @@ images_dhns/
 new_clusters/
 pickled_dhns/
 trained_mls/
-
+topology_data/
 
 # files
 A-generate_new_clusters.ipynb
@@ -20,8 +21,11 @@ C-read_trained_ml_perfs.ipynb
 D-hierarchical_cluster_generation_training.ipynb
 D-hierarchical_clustering_cleaned.ipynb
 E-automatic_clusters_generation_dhns.ipynb
+F-hybrid_sumulation_found_clusters.ipynb
 test.pdf
 test.svg
 clustering_saved/dhn_1/clustering_results.csv
+some_plots.ipynb
+requirements_env.txt
 
 *.json

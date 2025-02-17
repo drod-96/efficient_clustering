@@ -463,17 +463,13 @@ def get_cluster_types(dhn: DistrictHeatingNetworkFromExcel, cluster: list[str], 
         'Type': f'{len(ins)}-{len(outs)}' # 1-0
     }
 
-def _get_data_from_dataframe(df_inputs:pd.DataFrame, df_outputs:pd.DataFrame, df_ing_temps:pd.DataFrame = pd.DataFrame(), shuffle_data=False, time_step=60):
+def _get_data_from_dataframe(df_inputs:pd.DataFrame, df_outputs:pd.DataFrame, shuffle_data=False, time_step=60):
     df_inputs = df_inputs.iloc[2000:-60]
     df_outputs = df_outputs.iloc[2000:-60]
     inputs = df_inputs.copy()
     outputs = df_outputs.copy()
     X = np.asarray(inputs)
     Y = np.asarray(outputs)
-    
-    if df_ing_temps != None:
-        df_ing_temps = df_ing_temps.iloc[0:-60]
-        Z = np.asarray(df_ing_temps)
     
     print('Input features: ',df_inputs.columns)
     print('Output features: ',df_outputs.columns)
@@ -485,24 +481,16 @@ def _get_data_from_dataframe(df_inputs:pd.DataFrame, df_outputs:pd.DataFrame, df
     Y = scaller_y.transform(Y)
 
     x, y = create_time_sequential_dataset(X, Y, time_step) 
-    if df_ing_temps != None:
-        _, z = create_time_sequential_dataset(X, Z, time_step)
 
     if shuffle_data:
         x, y = shuffle(x, y, random_state = RANDOM_STATE_SHUFFLE) # type: ignore
-        if df_ing_temps != None:
-            x, y, z = shuffle(x, y, z, random_state = RANDOM_STATE_SHUFFLE) # type: ignore
     
     n = x.shape[0] # type: ignore
     num_train_samples = round(0.2*n)
     test_x, train_x = np.split(x, indices_or_sections=[num_train_samples], axis=0) # type: ignore
     test_y, train_y = np.split(y, indices_or_sections=[num_train_samples], axis=0) # type: ignore
     
-    if df_ing_temps != None:
-        test_z, train_z = np.split(z, indices_or_sections=[num_train_samples], axis=0) # type: ignore
-        return train_x, train_y, train_z, test_x, test_y, test_z, scaller_y, scaller_x
-    else:
-        return train_x, train_y, test_x, test_y, scaller_y, scaller_x
+    return train_x, train_y, test_x, test_y, scaller_y, scaller_x
 
 def flatten_input_data(train_x, train_y) -> tuple:
     """Flattens the input data from sequenced input/output data
@@ -560,20 +548,20 @@ def get_data_cluster_dhn_low_dim_demands(dhn: DistrictHeatingNetworkFromExcel, c
             df_inputs.drop(columns=column_names, inplace=True)
     
     print('Input features arranged with cluster of charges found = ',clusters_of_charges)
-    train_x, train_y, train_z, test_x, test_y, test_z, scaller_y, scaller_x = _get_data_from_dataframe(df_inputs,df_outputs, df_ing_temps, shuffle_data=shuffle_data, time_step=time_step)
-    return train_x, train_y, train_z, test_x, test_y, test_z, scaller_y, scaller_x
+    train_x, train_y, test_x, test_y, scaller_y, scaller_x = _get_data_from_dataframe(df_inputs,df_outputs, shuffle_data=shuffle_data, time_step=time_step)
+    return train_x, train_y, test_x, test_y, scaller_y, scaller_x
 
 def get_data_cluster_dhn_sum(dhn: DistrictHeatingNetworkFromExcel, cluster: list[str], shuffle_data=True, time_step=60) -> tuple:
-    df_inputs, df_outputs, df_ing_temps, _ = dhn.generate_sequential_input_data_v6(cluster, pooling_method='sum')
-    train_x, train_y, train_z, test_x, test_y, test_z, scaller_y, scaller_x = _get_data_from_dataframe(df_inputs,df_outputs, df_ing_temps, shuffle_data=shuffle_data, time_step=time_step)
-    return train_x, train_y, train_z, test_x, test_y, test_z, scaller_y, scaller_x
+    df_inputs, df_outputs, _, _ = dhn.generate_sequential_input_data_v6(cluster, pooling_method='sum')
+    train_x, train_y, test_x, test_y, scaller_y, scaller_x = _get_data_from_dataframe(df_inputs,df_outputs, shuffle_data=shuffle_data, time_step=time_step)
+    return train_x, train_y, test_x, test_y, scaller_y, scaller_x
 
 def get_data_cluster_dhn_weighted_sum(dhn: DistrictHeatingNetworkFromExcel, cluster: list[str], shuffle_data=True, time_step=60) -> tuple:
-    df_inputs, df_outputs, df_ing_temps, _ = dhn.generate_sequential_input_data_v6(cluster, pooling_method='weighted_sum')
-    train_x, train_y, train_z, test_x, test_y, test_z, scaller_y, scaller_x = _get_data_from_dataframe(df_inputs,df_outputs, df_ing_temps, shuffle_data=shuffle_data, time_step=time_step)
-    return train_x, train_y, train_z, test_x, test_y, test_z, scaller_y, scaller_x
+    df_inputs, df_outputs, _, _ = dhn.generate_sequential_input_data_v6(cluster, pooling_method='weighted_sum')
+    train_x, train_y, test_x, test_y, scaller_y, scaller_x = _get_data_from_dataframe(df_inputs,df_outputs, shuffle_data=shuffle_data, time_step=time_step)
+    return train_x, train_y, test_x, test_y, scaller_y, scaller_x
 
-def get_data_cluster_dhn(dhn: DistrictHeatingNetworkFromExcel, cluster: list[str], shuffle_data=True, time_step=60, with_z=False) -> tuple:
+def get_data_cluster_dhn(dhn: DistrictHeatingNetworkFromExcel, cluster: list[str], shuffle_data=True, time_step=60) -> tuple:
     # inners, ins, outs, qls = dhn.get_cluster_qualities_and_identify_connecting_pipes(cluster)
     df_inputs, df_outputs = dhn.generate_sequential_input_data_v5(cluster)
     train_x, train_y, test_x, test_y, scaller_y, scaller_x = _get_data_from_dataframe(df_inputs, df_outputs, shuffle_data=shuffle_data, time_step=time_step) # type: ignore
@@ -681,7 +669,7 @@ def generate_random_walk_cluster_from_dhn(dhn_network:DistrictHeatingNetworkFrom
     return clusters_found
 
 def get_learned_cluster_performance(dhn: DistrictHeatingNetworkFromExcel, model_full_path: str, cluster: list[str]):
-    train_x, train_y, train_z, test_x, test_y, test_z, scaller_y, scaller_x = get_data_cluster_dhn(dhn, cluster)
+    train_x, train_y, test_x, test_y, scaller_y, scaller_x = get_data_cluster_dhn(dhn, cluster)
     
     model = load_model(model_full_path)
     predictions = scaller_y.inverse_transform(model.predict(test_x))

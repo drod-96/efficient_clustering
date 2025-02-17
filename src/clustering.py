@@ -14,6 +14,8 @@ from tensorflow.keras.models import save_model, Sequential, load_model
 from tensorflow.keras.layers import GRU, Dense, BatchNormalization
 from keras.regularizers import L1
 
+import copy
+
 import ast
 import csv
 import os
@@ -432,7 +434,118 @@ class ClusteringDHN(object):
     #endregion
     
     #region Performing the clustering
-    def perform_clustering_one_shot(self, alpha: float, gamma: float, delta: float):
+    def update_clustering_labels(self, new_clusters):
+        """
+        Rewrites the clustering labels of nodes based on new merged clusters.
+
+        Parameters:
+            new_clusters (list of lists): The updated list of clusters after merging.
+
+        Returns:
+            clustering_labels (dict): Dictionary mapping each node to its new cluster label.
+        """
+        clustering_labels = {}  # Dictionary to store new labels
+
+        for cluster_index, cluster in enumerate(new_clusters):
+            for node in cluster:
+                clustering_labels[node] = cluster_index  # Assign new label
+
+        sorted_clustering_labels_dict = dict(sorted(clustering_labels.items()))
+        return list(sorted_clustering_labels_dict.values())
+    
+    def merge_clusters(self, clusters):
+        """
+        Merges clusters that are connected in the original graph.
+        
+        Parameters:
+            clusters: List of clusters where each cluster is a list of node indices.
+            
+        Returns:
+            new_clusters: Merged list of clusters.
+        """
+        
+        dhn = self.dhn
+        # Step 1: Identify connected clusters
+        list_edges = list(dhn.edges_nodes.values())  # Get the list of edges
+        connected_clusters = []  # Stores pairs of clusters that should be merged
+        new_clusters = copy.deepcopy(clusters)  # Copy original clusters to modify
+        
+        for i in range(len(clusters)):
+            cluster_i = clusters[i]
+            if len(cluster_i) == 1:  # Ignore single-node clusters
+                continue
+                
+            for j in range(i + 1, len(clusters)):
+                cluster_j = clusters[j]
+                if len(cluster_j) == 1:  # Ignore single-node clusters
+                    continue
+                    
+                is_connected = False
+                for el_i in cluster_i:
+                    for el_j in cluster_j:
+                        if (el_i, el_j) in list_edges or (el_j, el_i) in list_edges:
+                            connected_clusters.append([i, j])  # Store connection
+                            print(f'Connected clusters at indices {i} and {j}')
+                            is_connected = True
+                            break
+                            
+                if is_connected:
+                    break  # Move to next cluster after finding a connection
+                    
+        # Step 2: Merge all connected clusters recursively
+        merged_indices = {}  # Mapping from old cluster indices to new merged ones
+        
+        # Create a Union-Find structure for merging
+        def find(x):
+            """Find the root of cluster x."""
+            while merged_indices[x] != x:
+                merged_indices[x] = merged_indices[merged_indices[x]]  # Path compression
+                x = merged_indices[x]
+            return x
+
+        def union(x, y):
+            """Merge clusters x and y."""
+            root_x = find(x)
+            root_y = find(y)
+            if root_x != root_y:
+                merged_indices[root_y] = root_x  # Merge y into x
+
+        # Initialize each cluster as its own set
+        for i in range(len(clusters)):
+            merged_indices[i] = i
+
+        # Merge connected clusters
+        for i, j in connected_clusters:
+            union(i, j)
+
+        # Step 3: Create new clusters based on merged indices
+        merged_groups = {}  # Maps new cluster indices to their nodes
+        for i in range(len(clusters)):
+            root = find(i)  # Find the root representative of each cluster
+            if root not in merged_groups:
+                merged_groups[root] = []
+            merged_groups[root].extend(clusters[i])
+
+        # Convert merged_groups dictionary into final list of clusters
+        new_clusters = list(merged_groups.values())
+
+        return new_clusters
+    
+    def post_process_obtained_clusters(self, clustering_labels):
+        """
+            Post process the clustering labels by connecting adjacent clusters for the task behind
+        Parameters:
+            clustering_labels (list): results of Hierarchical agglomerative
+            
+        Returns:
+            new_clustering_labels: list
+        """
+        list_clusters = self._create_list_clusters_from_labels_clustering(clustering_labels)
+        new_clusters_merged_adjacent = self.merge_clusters(list_clusters)
+        new_clustering_labels = self.update_clustering_labels(new_clusters_merged_adjacent)
+        return new_clustering_labels
+        
+    def perform_clustering_one_shot(self, alpha: float, gamma: float, delta: float, with_post_processing: bool):
         print(f'Performing the clustering for DHN {self.dhn_indicator} .....')
         
         distance_matrix_to_use = None
@@ -450,11 +563,15 @@ class ClusteringDHN(object):
         model_agglo = HAgglo(n_clusters=None, metric='precomputed', linkage='single', distance_threshold=delta)
         model_agglo.fit(distance_matrix)
         clustering_labels = model_agglo.labels_
+
+        if with_post_processing:
+            new_labels = self.post_process_obtained_clusters(clustering_labels)
+            clustering_labels = new_labels
         
         list_clusters = self._create_list_clusters_from_labels_clustering(clustering_labels)
-        return list_clusters
+        return list_clusters, clustering_labels
 
-    def perform_clustering(self, alpha: float, gamma: float):
+    def perform_clustering(self, alpha: float, gamma: float, with_post_processing: bool):
     
         print(f'Performing the clustering for DHN {self.dhn_indicator}  with gamma={gamma} and alpha={alpha} - - - ->')
         
@@ -477,6 +594,10 @@ class ClusteringDHN(object):
             model_agglo = HAgglo(n_clusters=None, metric='precomputed', linkage='single', distance_threshold=h_cut)
             model_agglo.fit(distance_matrix)
             clustering_labels = model_agglo.labels_
+
+            if with_post_processing:
+                new_labels = self.post_process_obtained_clusters(clustering_labels)
+                clustering_labels = new_labels
             
             metrics, nodes_clusters_visualisation = self.compute_clustering_metrics(distance_matrix, clustering_labels)
             
@@ -574,7 +695,7 @@ class ClusteringDHN(object):
                 clusters_from_labels = self._create_list_clusters_from_labels_in_string(labels)
                 for cluster in clusters_from_labels:
                     if len(cluster) > 1:
-                        cluster_copy = [int(i)+1 for i in cluster]
+                        cluster_copy = [int(i)+1 for i in cluster] # !! IMPORTANT CA FOR MODEL TRAINING
                         cluster_copy.sort()
                         key_cluster = create_cluster_unique_key(cluster_copy, self.dhn_indicator)
                         if key_cluster not in self.all_clusters_keys:
