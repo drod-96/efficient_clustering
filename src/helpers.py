@@ -28,6 +28,21 @@ import networkx as nx
 
 RANDOM_STATE_SHUFFLE = 2
 
+def get_producers_indices(dhn, id):
+    """Gets the list of the networkd heat producers nodes indices from python base
+    
+    Args:
+        dhn (DistrictHeatingNetworkFromExcel): the DHN
+        id (int): the id of the DHN
+
+    Returns:
+        list: list of nodes indices (0-base)
+    """
+    if id in [1,2,3,4]:
+        return get_network_producers_nodes_indices(id)
+    else:
+        return [int(i)-1 for i in dhn.producer_nodes] # python indexed
+
 def get_network_producers_nodes_indices(network_id: int):
     """Gets the list of the network' heat producers nodes ids
 

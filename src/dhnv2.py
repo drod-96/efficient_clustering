@@ -55,17 +55,6 @@ class DistrictHeatingNetworkFromExcel(object):
         # Puis les inputs
         self.dict_physical_values = self.generate_input_dictionnary()
         
-    def get_all_edges_with_inversion_fluxes(self, verbose=1):
-        mw = self.dict_physical_values['mw']
-        list_ = []
-        for e, _ in self.edge_features_v2.iterrows():
-            if self._any_flow_inversion_on_the_edge(mw[e,:]):
-                list_.append(e)
-        
-        if verbose == 1:   
-            print('Index of the edges with possible flux inversion: ', list_)
-        return list_
-        
     def get_inverted_edges_in_julia_indices(self):
         return [i+1 for i in self.inverted_edges_indices]
 
@@ -122,7 +111,7 @@ class DistrictHeatingNetworkFromExcel(object):
 
         nodes_df = pd.read_excel(self.topology_file_path, sheet_name=['nodes'])['nodes']
         pipes_df = pd.read_excel(self.topology_file_path, sheet_name=['pipes'])['pipes']
-        # loads_df = pd.read_excel(self.topology_file_path, sheet_name=['loads'])['loads']
+        loads_df = pd.read_excel(self.topology_file_path, sheet_name=['loads'])['loads']
         if self.topology_version == 1:
             df_conso = pd.read_excel(self.topology_file_path, sheet_name=['consumers'])['consumers']
         else:
@@ -151,7 +140,7 @@ class DistrictHeatingNetworkFromExcel(object):
         for node_index, row in nodes_df.iterrows():
             x = row['x']
             y = row['y']
-            # demand = np.mean(loads_df[node_index+1])
+            demand = np.mean(loads_df[node_index+1])
             is_prod = row[is_prod_key]
             # cns = consumers_df.iloc[node_index]
             # u_factor = cns['U factor']
@@ -166,11 +155,11 @@ class DistrictHeatingNetworkFromExcel(object):
             
             if is_prod:
                 self.nodes_colors.append('tab:red')
-                self.producer_nodes.append(int(node_index)+1)
+                self.producer_nodes.append(row['Node'])
             else:
                 self.nodes_colors.append('tab:blue')
             # self.node_labels[node_index] = f'[{round(demand/1e6,1)}]\n[{round(tr,1)}]'
-            self.node_labels[node_index] = f'[{round(0/1e3)}]'
+            self.node_labels[node_index] = f'[{round(demand/1e3)}]'
             
         self.adjacency_matrix = adj_matrix
         # self.nodes_attributes = att_matrix
@@ -200,12 +189,7 @@ class DistrictHeatingNetworkFromExcel(object):
         nx.draw(self.Graph, pos=self.nodes_coordinates, node_color=self.nodes_colors)
         plt.show()
         
-    def _treat_convergence_problem_mass_flow_rates(self, mw):
-        mean_value = np.max(np.abs(mw))
-        mw[np.abs(mw) < 0.01*mean_value] = 0.0
-        return mw
-        
-    def _any_flow_inversion_on_the_edge(self, mws):
+    def _any_flow_inversion_on_the_edge(mws: np.array):
         """Detects the edges where the sign of the MWs changes from positive to negative or vice versa.
 
         Args:
@@ -216,7 +200,7 @@ class DistrictHeatingNetworkFromExcel(object):
         """
         signs = np.sign(mws[:-1]) * np.sign(mws[1:])  #  calculates the element-wise product of signs between adjacent elements. A negative product indicates a sign change (one positive and one negative).
         nt_inv = np.where(signs == -1)[0]
-        return nt_inv.size > 2 # avoid anomalies of just one jump (TODO DR: see what causes that phenomenon on the julia physical simulation)
+        return nt_inv.size > 1 # avoid anomalies of just one jump (TODO DR: see what causes that phenomenon on the julia physical simulation)
             
     def generate_input_dictionnary(self):
         """Generates the input dictionnary
@@ -263,13 +247,7 @@ class DistrictHeatingNetworkFromExcel(object):
         else:
             sources_ms_rates = np.zeros_like(mass_rates_in_pipes)
         # sources_ms_rates = matlab_variables['ms'][:,cut:-limit]
-        sources_tss = np.zeros_like(consumptions_ms_rates)
-        if 'tss' in matlab_variables:
-            sources_tss = matlab_variables['tss'][:,cut:limit]
-            
-        sources_ps = np.zeros_like(consumptions_ms_rates)
-        if 'Ps' in matlab_variables:
-            sources_ps = matlab_variables['Ps'][:,cut:limit]
+        # sources_tss = matlab_variables['tss'][:,cut:limit]
         # consumer_deficits = matlab_variables['deficit'][:,cut:-limit]
         # consumer_surplus = matlab_variables['surplus'][:,cut:-limit]
         charges_at_nodes = np.zeros_like(consumptions)
@@ -279,14 +257,12 @@ class DistrictHeatingNetworkFromExcel(object):
         e_features = dict()
         for edge_idx in self.edges_nodes:
             msw = mass_rates_in_pipes[edge_idx, :]
-            msw = self._treat_convergence_problem_mass_flow_rates(msw)
             (st, ed) = self.edges_nodes[edge_idx]
             row = self.edge_features.iloc[edge_idx] # not rearranged in inverted edges because it is hard to remodify pandas dataframe
             tau_edge = self._compute_delay_time_pipe(np.mean(np.abs(msw)), row['length']*1e3, row['Diameter'])
             taus.append(tau_edge)
             nb_ = ed
-            # if self._any_flow_inversion_on_the_edge(msw):
-            if all(item <= 0.01 for item in msw):
+            if all(item <= 0.1 for item in msw):
                 mass_rates_in_pipes[edge_idx, :] = np.abs(msw)
                 # inverse nodes
                 print(f'Edge {edge_idx+1} is inversed due to flux inversion!')
@@ -327,8 +303,7 @@ class DistrictHeatingNetworkFromExcel(object):
             'Trout': pipes_trout,
             'mc': consumptions_ms_rates,
             'ms': sources_ms_rates,
-            'tss': sources_tss,
-            'Ps': sources_ps,
+            # 'tss': sources_tss,
             # 'surplus': consumer_surplus,
             # 'deficit': consumer_deficits,
         }
@@ -448,6 +423,7 @@ class DistrictHeatingNetworkFromExcel(object):
         """
         
         inner_edges, in_going_edges, out_going_edges, qualities = self.get_cluster_qualities_and_identify_connecting_pipes(cluster_of_nodes) # at time = 0
+        inner_edges, upstream_nodes, in_going_edges, downstream_nodes, out_going_edges, qualities = self.get_cluster_boundary_nodes(cluster_of_nodes) # at time = 0
         
         list_edges = []
         for e in inner_edges:
@@ -880,7 +856,7 @@ class DistrictHeatingNetworkFromExcel(object):
             tsin_edge = pipes_tsin[edge_idx,:]
             trout_edge = pipes_trout[edge_idx,:]
             
-            weight = np.exp(-1*(h*lng*d/CP/ms_rates[edge_idx,:].T))
+            weight = np.exp(-1*(h*lng*d/CP/np.abs(ms_rates[edge_idx,:]).T))
             
             ts_in = tsin_edge.T
             df_input_features.insert(loc=iii, column=f'Tsin_pipe{edge_idx}->{sti+1}', value=ts_in*weight)
@@ -900,7 +876,7 @@ class DistrictHeatingNetworkFromExcel(object):
             tsout_edge = pipes_tsout[edge_idx,:]
             trin_edge = pipes_trin[edge_idx,:]
             
-            weight = np.exp(-1*(h*lng*d/CP/ms_rates[edge_idx,:].T))
+            weight = np.exp(-1*(h*lng*d/CP/np.abs(ms_rates[edge_idx,:]).T))
               
             ts_out = tsout_edge.T
             df_outputs.insert(loc=ooo, column=f'Tsout_pipe{edge_idx}->{endi+1}', value=ts_out)
@@ -909,6 +885,66 @@ class DistrictHeatingNetworkFromExcel(object):
             tr_in = trin_edge.T
             df_input_features.insert(loc=iii, column=f'Trin_pipe{edge_idx}->{endi+1}', value=tr_in*weight)
             iii += 1
+
+        return df_input_features, df_outputs
+    
+    def generate_sequential_input_data_v5_nodes_boundary(self, cluster_of_nodes: list):
+        
+        dict_inputs = self.dict_physical_values
+        _, upstream_nodes, in_going_edges, downstream_nodes, out_going_edges = self.get_cluster_boundary_nodes(cluster_of_nodes)
+
+        demands = dict_inputs['Demands'].copy()
+        ms_rates = dict_inputs['mw'].copy()
+        pipes_tsin = dict_inputs['Tsin'].copy()
+        pipes_tsout = dict_inputs['Tsout'].copy()
+        pipes_trin = dict_inputs['Trin'].copy()
+        pipes_trout = dict_inputs['Trout'].copy()
+        nodes_ts = dict_inputs['Ts_node'].copy()
+        nodes_tr = dict_inputs['Tr_node'].copy()
+        
+        df_input_features = pd.DataFrame()
+        iii = 0
+            
+        for el in cluster_of_nodes:
+            node_index = int(el)-1
+            demands_node = demands[node_index,:].T
+            df_input_features.insert(loc=iii, column=f'Demand {node_index+1}', value=demands_node)
+            iii += 1
+        
+        for edge_idx in in_going_edges:
+            (sti, endi) = self.edges_nodes[edge_idx]
+            row = self.edge_features.iloc[edge_idx]
+            h = row['h']
+            lng = row['length'] * 1e3
+            d = row['Diameter']
+
+            tsout_edge = pipes_tsout[edge_idx,:] # pipes out temperature
+            weight = np.exp(-1*(h*lng*d/CP/np.abs(ms_rates[edge_idx,:]).T))
+            
+            df_input_features.insert(loc=iii, column=f'Tsfeature_pipe{edge_idx}', value=tsout_edge.T*weight)
+            iii +=1
+            
+        for edge_idx in out_going_edges:
+            (sti, endi) = self.edges_nodes[edge_idx]
+            row = self.edge_features.iloc[edge_idx]
+            h = row['h']
+            lng = row['length'] * 1e3
+            d = row['Diameter']
+            
+            trout_edge = pipes_trout[edge_idx,:] # pipes out temperature
+            weight = np.exp(-1*(h*lng*d/CP/np.abs(ms_rates[edge_idx,:]).T))
+
+            df_input_features.insert(loc=iii, column=f'TrFeature_pipe{edge_idx}', value=trout_edge.T*weight)
+            iii += 1
+
+        df_outputs = pd.DataFrame()
+        ooo = 0
+        for node_boundary in upstream_nodes:
+            df_outputs.insert(loc=ooo, column=f'TrPrediction_{node_boundary}', value=nodes_tr[node_boundary-1, :]) # -1 as nodes are in julia index
+            ooo += 1
+        for node_boundary in downstream_nodes:
+            df_outputs.insert(loc=ooo, column=f'TsPrediction_{node_boundary}', value=nodes_ts[node_boundary-1, :]) # -1 as nodes are in julia index
+            ooo += 1 
 
         return df_input_features, df_outputs
     
@@ -1589,3 +1625,493 @@ class DistrictHeatingNetworkFromExcel(object):
             'max_diameter': max_diameter,
         }
         return inner_edges, in_going_edges, out_going_edges, qualities
+    
+    def get_cluster_boundary_nodes(self, nodes_in_cluster: list):
+        """Computes the boundary nodes of the cluster with pipes
+
+        Args:
+            nodes_in_cluster (list): Cluster of nodes
+            
+        Returns:
+            tuple: inner edges, upstream nodes, incoming edges, downstream nodes, outgoing pipes
+        """
+        internal_edges_idx = []
+        external_edges_idx_pointing_in = []
+        external_edges_idx_pointing_out = []
+        
+        pipes = {}
+        upstream_boundary_nodes = []
+        downstream_boundary_nodes = []
+
+        # on cherche dans la dict
+        for edge_idx in self.edges_nodes:
+            (st_n, en_n) = self.edges_nodes[edge_idx]
+            if (st_n+1) in nodes_in_cluster:
+                
+                if (en_n+1) in nodes_in_cluster:
+                    # ca veut dire que c'est une connexion interne
+                    internal_edges_idx.append(edge_idx)
+                else:
+                    # ca veut dire que c'est une connexion externe
+                    external_edges_idx_pointing_out.append(edge_idx)
+                    # downstream_boundary_nodes.append(en_n+1) #!!!! ERROR HERE !!!
+                    downstream_boundary_nodes.append(st_n+1)
+                    
+            elif (en_n+1) in nodes_in_cluster and (st_n+1) not in nodes_in_cluster:
+                external_edges_idx_pointing_in.append(edge_idx)
+                upstream_boundary_nodes.append(en_n+1)
+                
+        # Pour eviter les repetitions on prend un set, similaire à HashSet pour C#
+        inner_edges = set(internal_edges_idx)
+        in_going_edges = set(external_edges_idx_pointing_in)
+        out_going_edges = set(external_edges_idx_pointing_out)
+
+        upstream_boundaries = set(upstream_boundary_nodes)
+        downstream_boundaries = set(downstream_boundary_nodes)
+
+        return inner_edges, upstream_boundaries, in_going_edges, downstream_boundaries, out_going_edges
+
+    def get_cluster_boundary_nodes_with_qualities(self, nodes_in_cluster: list):
+        """Computes the boundary nodes of the cluster with pipes
+
+        Args:
+            nodes_in_cluster (list): Cluster of nodes
+            
+        Returns:
+            tuple: inner edges, upstream nodes, incoming edges, downstream nodes, outgoing pipes, qualities
+        """
+        internal_edges_idx = []
+        external_edges_idx_pointing_in = []
+        external_edges_idx_pointing_out = []
+        
+        pipes = {}
+        upstream_boundary_nodes = []
+        downstream_boundary_nodes = []
+
+        internal_edges_idx = []
+        external_edges_idx_pointing_in = []
+        external_edges_idx_pointing_out = []
+        inner_pipes_total_length = [] # Longueur totale du pipe
+        
+        pipes = {}
+        nodes_internal_indegree = {}
+        nodes_external_indegree = {}
+        nodes_internal_outdegree = {}
+        nodes_external_outdegree = {}
+        nodes_total_degree = {}
+        
+        for node in nodes_in_cluster:
+            nodes_internal_indegree[node]=0
+            nodes_external_indegree[node]=0
+            nodes_internal_outdegree[node]=0
+            nodes_external_outdegree[node]=0
+            nodes_total_degree[node]=0
+
+        # on cherche dans la dict
+        for edge_idx in self.edges_nodes:
+            (st_n, en_n) = self.edges_nodes[edge_idx]
+            if (st_n+1) in nodes_in_cluster:
+                
+                if (en_n+1) in nodes_in_cluster:
+                    # ca veut dire que c'est une connexion interne
+                    internal_edges_idx.append(edge_idx)
+                    nodes_internal_outdegree[st_n+1] += 1  
+                    nodes_internal_indegree[en_n+1] += 1
+                else:
+                    # ca veut dire que c'est une connexion externe
+                    external_edges_idx_pointing_out.append(edge_idx)
+                    # downstream_boundary_nodes.append(en_n+1) #!!!! ERROR HERE !!!
+                    downstream_boundary_nodes.append(st_n+1)
+                    nodes_external_outdegree[st_n+1] += 1
+                    
+            elif (en_n+1) in nodes_in_cluster and (st_n+1) not in nodes_in_cluster:
+                external_edges_idx_pointing_in.append(edge_idx)
+                upstream_boundary_nodes.append(en_n+1)
+                nodes_external_indegree[en_n+1] += 1
+                
+        max_diameter = 0
+        for i in range(len(nodes_in_cluster)):
+            node_i_indx = nodes_in_cluster[i] - 1
+            for j in range(i+1, len(nodes_in_cluster)):
+                node_j_indx = nodes_in_cluster[j] - 1
+                d_i_j = np.linalg.norm((np.array(self.nodes_coordinates[node_i_indx]) - np.array(self.nodes_coordinates[node_j_indx])))
+                max_diameter = max(max_diameter, d_i_j)
+                
+        # Pour eviter les repetitions on prend un set, similaire à HashSet pour C#
+        inner_edges = set(internal_edges_idx)
+        in_going_edges = set(external_edges_idx_pointing_in)
+        out_going_edges = set(external_edges_idx_pointing_out)
+
+        upstream_boundaries = set(upstream_boundary_nodes)
+        downstream_boundaries = set(downstream_boundary_nodes)
+
+        n_e = len(inner_edges)
+        n_c = len(nodes_in_cluster)
+        
+        if n_c == 1:
+            inner_density = 0
+        else:
+            inner_density = n_e / (n_c * (n_c -1)) # Density for directed graphs
+            
+        inner_degree = n_e # also refereed as internal degree of the cluster
+        scaled_density = n_c * inner_density # (Vinh-Loc Dao et al., 2018)
+        external_degree = len(in_going_edges) + len(out_going_edges)
+        
+        # https://www.cis.upenn.edu/~cis5150/cis515-15-spectral-clust-chap5.pdf
+        # https://www.cs.purdue.edu/homes/dgleich/publications/Gleich%202005%20-%20hierarchical%20directed%20spectral.pdf
+        # Volume set of nodes = Sum vol(node) wher vol(node) = total degree
+        # Volume of a cut = total out degree of cut = cut size
+        # Cut ratio = cut size / n_c where cut size = sum of external connections
+        # Normalized cut = cut size * (1/vol(set S) + 1/vol(set S_bar))
+        # Conductance = volume cut (S) / min(vol set S, vol set S_bar) in our case vol set S < (always) vol set S_bar
+        
+        # Basic qualities
+        total_cluster_degree = inner_degree + external_degree
+        # Interesting qualities
+        cut_size = external_degree
+        cut_ratio = cut_size / n_c
+        conductance = cut_size / total_cluster_degree
+        
+        nodes_outdegree_fraction = []
+        nodes_indegree_fraction = [] # in from external edges
+
+        for node in nodes_external_outdegree:
+            nodes_total_degree[node] = nodes_internal_indegree[node] + nodes_internal_outdegree[node]
+            total_outdegree = nodes_external_outdegree[node]+nodes_internal_outdegree[node]
+            if total_outdegree == 0:
+                nodes_outdegree_fraction.append(0.0) # Peut arriver pour les noeuds de bout de réseaux
+            else:
+                nodes_outdegree_fraction.append(nodes_external_outdegree[node]/(nodes_external_outdegree[node]+nodes_internal_outdegree[node]))
+        
+        for node in nodes_external_indegree:
+            total_indegree = nodes_external_indegree[node]+nodes_internal_indegree[node]
+            if total_indegree == 0:
+                nodes_indegree_fraction.append(0.0) # Normalement que pour les sources
+            else:
+                nodes_indegree_fraction.append(nodes_external_indegree[node]/(nodes_external_indegree[node]+nodes_internal_indegree[node]))
+        
+        average_outdegree_fraction = np.mean(np.array(nodes_outdegree_fraction))
+        max_outdegree_fraction = np.max(np.array(nodes_outdegree_fraction))
+        average_indegree_fraction = np.mean(np.array(nodes_indegree_fraction))
+        max_indegree_fraction = np.max(np.array(nodes_indegree_fraction))
+        
+        # print(nodes_internal_indegree.values())
+        # Qualities = [density, total inner degree, total external degree, cluster volume, cut size, cut ratio, conductance, cut value, max diameter]
+        qualities = {
+            # Internal degree and connectivity
+            'density': inner_density,
+            'internal_degree': n_e,
+            'scaled_density': scaled_density,
+
+            # Indegree of nodes
+            'nodes_mean_internal_indegree': sum(nodes_internal_indegree.values()) / len(nodes_internal_indegree),
+            'nodes_sum_internal_indegree': sum(nodes_internal_indegree.values()),
+            'nodes_max_internal_indegree': max(nodes_internal_indegree.values()),
+
+            # Outdegree of nodes
+            'nodes_mean_internal_outdegree': sum(nodes_internal_outdegree.values()) / len(nodes_internal_outdegree),
+            'nodes_sum_internal_outdegree': sum(nodes_internal_outdegree.values()),
+            'nodes_max_internal_outdegree': max(nodes_internal_outdegree.values()),
+
+            # Indegree + Outdegree of nodes
+            'nodes_mean_internal_degree': sum(nodes_total_degree.values()) / len(nodes_total_degree),
+            'nodes_sum_internal_degree': sum(nodes_total_degree.values()),
+            'nodes_max_internal_degree': max(nodes_total_degree.values()),
+            
+            # External degree and connectivity
+            'average_outdegree_fraction': average_outdegree_fraction,
+            'max_outdegree_fraction': max_outdegree_fraction,
+            'average_indegree_fraction': average_indegree_fraction,
+            'max_indegree_fraction': max_indegree_fraction,
+            
+            # cut sizes and conductances
+            'cut_size': cut_size,
+            'cut_ratio': cut_ratio,
+            'conductance': conductance,
+
+            'nb_upstream_interfaces': len(upstream_boundaries),
+            'nb_downstream_interfaces': len(downstream_boundaries),
+            
+            # Surface
+            'max_diameter': max_diameter,
+        }
+
+        return inner_edges, upstream_boundaries, in_going_edges, downstream_boundaries, out_going_edges, qualities
+        
+
+    # Metrics -----------------------------
+
+    # Time series distances
+    def _compute_manhattan_distance_between_time_series(self, time_serie_a, time_serie_b):
+        return np.sum(np.abs(time_serie_a - time_serie_b)) / len(time_serie_a)
+
+    def _compute_total_ts_tr_signals_distances(self, edge_index: int):
+        (node_a_idx, node_b_indx) = self.edges_nodes[edge_index]
+        dist_ts = self._compute_manhattan_distance_between_time_series(self.dict_physical_values['Ts_node'][node_a_idx,:], self.dict_physical_values['Ts_node'][node_b_indx,:]) 
+        dist_tr = self._compute_manhattan_distance_between_time_series(self.dict_physical_values['Tr_node'][node_a_idx,:], self.dict_physical_values['Tr_node'][node_b_indx,:])
+        return dist_ts + dist_tr
+    
+    def _compute_demands_signals_distances(self, edge_index: int):
+        (node_a_idx, node_b_indx) = self.edges_nodes[edge_index]
+        dist_demands = self._compute_manhattan_distance_between_time_series(self.dict_physical_values['Demands'][node_a_idx,:], self.dict_physical_values['Demands'][node_b_indx,:]) 
+        return dist_demands
+    
+    def _compute_pipe_losses(self, edge_index: int):
+        load_in = np.abs(self.dict_physical_values['mw'][edge_index,:]) * CP * (self.dict_physical_values['Tsin'][edge_index,:] - self.dict_physical_values['Trout'][edge_index,:]) 
+        load_out = np.abs(self.dict_physical_values['mw'][edge_index,:]) * CP * (self.dict_physical_values['Tsout'][edge_index,:] - self.dict_physical_values['Trin'][edge_index,:])
+        
+        e_in = np.sum(load_in)
+        e_out = np.sum(load_out)
+        return (e_in - e_out) / e_in
+
+    def _get_ts_tr_distances(self, inside_pipes, upstream_boundaries, incoming_edges, downstream_boundaries, out_going_edges): # cluster julia index
+        # inside_pipes, upstream_boundaries, incoming_edges, downstream_boundaries, out_going_edges = self.get_cluster_boundary_nodes(cluster)
+
+        cluster_quality_metrics = {}
+
+        pipes_temperatures_distances = []
+        pipes_energy_losses_percent = []
+        demands_distances = []
+            
+        for i in inside_pipes:
+            dist_temp = self._compute_total_ts_tr_signals_distances(i)
+            dist_demnd = self._compute_demands_signals_distances(i)
+            perc_pipe_loss = self._compute_pipe_losses(i)
+
+            pipes_temperatures_distances.append(dist_temp)
+            demands_distances.append(dist_demnd)
+            pipes_energy_losses_percent.append(perc_pipe_loss)
+
+        cluster_quality_metrics['mean_ts_tr_distance'] = np.mean(np.abs(pipes_temperatures_distances)) # smoothness temps
+        cluster_quality_metrics['mean_demands_distance'] = np.mean((demands_distances)) # smoothness demands
+        cluster_quality_metrics['mean_pipes_loss'] = np.mean((pipes_energy_losses_percent)) # smoothness demands
+
+        return cluster_quality_metrics
+    
+    # Time delay
+    def _compute_cluster_delay_time(self, inner_edges, upstream_boundaries, incoming_edges, downstream_boundaries, out_going_edges):
+
+        # Debug 
+        # print(f'Inner edges = {inner_edges}')
+        # print(f'Incoming edges = {incoming_edges}')
+        # print(f'Outgoing edges = {out_going_edges}')
+        # print(f'Upstream boundaries = {upstream_boundaries}') # in julia index
+        # print(f'Downstream boundaries = {downstream_boundaries}') # in julia index
+
+        G = nx.DiGraph()
+
+        for ed_ in inner_edges:
+            (u, v) = self.edges_nodes[ed_]
+            row = self.edge_features_v2.iloc[ed_]
+            d = row['diameter']
+            tau = row['delay_time']
+            vel = row['velocity']
+            l = row['length']
+            # weight = round(tau)
+            weight = tau
+            G.add_edge(u, v, weight=1*weight)
+
+        # Here not necessary in the new version
+        source_nodes = []
+        for ed_ in incoming_edges:
+            (u, v) = self.edges_nodes[ed_]
+            row = self.edge_features_v2.iloc[ed_]
+            d = row['diameter']
+            tau = row['delay_time']
+            vel = row['velocity']
+            l = row['length']
+            # weight = round(tau)
+            weight = tau
+            # G.add_edge(u, v, weight=1*weight)
+            source_nodes.append(v)
+
+        target_nodes = []
+        for ed_ in out_going_edges:
+            (u, v) = self.edges_nodes[ed_]
+            row = self.edge_features_v2.iloc[ed_]
+            d = row['diameter']
+            tau = row['delay_time']
+            vel = row['velocity']
+            l = row['length']
+            # weight = round(tau)
+            weight = tau
+            # G.add_edge(u, v, weight=1*weight)
+            target_nodes.append(u) # may be u here for new ML clusters
+
+        # Compute longest paths from source nodes to target nodes
+        distances_between_sources_targets = []
+        paths_between_sources_targets = []
+
+        # if len(target_nodes) > 0:
+        #     for source in source_nodes:
+        #         for target in target_nodes:
+        #             try:
+        #                 tau_found, path = nx.single_source_dijkstra(G, source, target, weight='weight')
+        #                 # print(f'Between {source} and {target}: {length/60} min with path {path}')
+        #                 distances_between_sources_targets.append(tau_found)
+        #                 paths_between_sources_targets.append(path)
+
+        #             except nx.NetworkXNoPath as ex:
+        #                 print(ex)
+        #                 continue
+        # else:
+        #     for source in source_nodes:
+        #         try:
+        #             taus, paths = nx.single_source_dijkstra(G, source, weight='weight')
+        #             for target, tau_found in taus.items():
+        #                 distances_between_sources_targets.append(tau_found)
+        #                 paths_between_sources_targets.append(paths[target])
+
+        #         except nx.NetworkXNoPath as ex:
+        #             print(ex)
+        #             continue
+        try:
+            for source in source_nodes:
+                try:
+                    taus, paths = nx.single_source_dijkstra(G, source, weight='weight')
+                    for target, tau_found in taus.items():
+                        distances_between_sources_targets.append(tau_found)
+                        paths_between_sources_targets.append(paths[target])
+
+                except nx.NetworkXNoPath as ex:
+                    continue
+
+            # print(f'Delay time found = {np.array(distances_between_sources_targets)} s')
+            # print(f'Source nodes: {source_nodes}')
+            # print(f'Target nodes: {target_nodes}')
+
+            distances_between_sources_targets = np.array(distances_between_sources_targets) / 60
+            distances_between_sources_targets_non_zeros = distances_between_sources_targets[distances_between_sources_targets > 0.0]
+
+            max_delay_time = np.max(distances_between_sources_targets_non_zeros)
+            mean_delay_time = np.mean(distances_between_sources_targets_non_zeros)
+            min_delay_time = np.min(distances_between_sources_targets_non_zeros)
+            std_delay_time = np.std(distances_between_sources_targets_non_zeros)
+            median_delay_time = np.median(distances_between_sources_targets_non_zeros)
+
+            cluster_quality_metrics = {
+                'mean_delay_time': mean_delay_time,
+                'min_delay_time': min_delay_time,
+                'max_delay_time': max_delay_time,
+                'std_delay_time': std_delay_time,
+                'median_delay_time': median_delay_time,
+            }
+
+            return cluster_quality_metrics
+        
+        except Exception as ex:
+            print(f'Error to compute transport delay time for: {ex}')
+            # Debug 
+            print(f'Inner edges = {inner_edges}')
+            print(f'Incoming edges = {incoming_edges}')
+            print(f'Outgoing edges = {out_going_edges}')
+            print(f'Upstream boundaries = {upstream_boundaries}') # in julia index
+            print(f'Downstream boundaries = {downstream_boundaries}') # in julia index
+            # raise Exception("Passed!")
+            cluster_quality_metrics = {
+                'mean_delay_time': 0,
+                'min_delay_time': 0,
+                'max_delay_time': 0,
+                'std_delay_time': 0,
+                'median_delay_time': 0,
+            }
+
+            return cluster_quality_metrics
+
+    
+    # Other physical metrics
+    def _compute_thermal_losses(self, cluster, inner_edges, upstream_boundaries, incoming_edges, downstream_boundaries, out_going_edges):
+        """Computes the errors in energy using only the test set physical values
+
+        Args:
+            cluster (list[int]): the cluster with julia index (1-base)
+            mae (float): the MAE performances
+
+        Returns:
+            tuple: eerror in energy, etc
+        """
+
+        cluster_to_use = cluster # clustering in julia index
+        
+        # Let's identify the indexes of the test set
+        real_pcs = self.dict_physical_values['Real_Pc'].copy()
+        real_pcs[real_pcs < 0.0] = 0.0
+          
+        real_pcs_test = real_pcs[:,:]
+        tsin_test = self.dict_physical_values['Tsin'][:,:]
+        trin_test = self.dict_physical_values['Trin'][:,:]
+        tsout_test = self.dict_physical_values['Tsout'][:,:]
+        trout_test = self.dict_physical_values['Trout'][:,:]
+        mw_test = self.dict_physical_values['mw'][:,:]
+
+        total_e_consumptions = np.abs(real_pcs_test[[i-1 for i in cluster_to_use],:]).sum() # Total energy consumed
+        total_e_incomings = 0
+        total_e_outgoings = 0
+        total_e_error = 0
+
+        loss_pipes = []
+        
+        # We may have bigger error / loss as the losses are lower
+        for pipe_index in incoming_edges:
+            p_in = np.abs(mw_test[pipe_index,:]) * CP * (tsout_test[pipe_index,:] - trin_test[pipe_index,:])
+            total_e_incomings += p_in.sum()
+        
+        for pipe_index in out_going_edges:
+            p_out = np.abs(mw_test[pipe_index,:]) * CP * (tsin_test[pipe_index,:] - trout_test[pipe_index,:])
+            total_e_outgoings += p_out.sum()
+
+        total_e_loss = total_e_incomings - total_e_consumptions - total_e_outgoings
+        total_e_through = total_e_incomings - total_e_outgoings
+
+        cluster_metrics = {
+            "e_loss_wrt_energy_through": 100* total_e_loss / total_e_through,
+            "e_loss_wrt_energy_consumed": 100* total_e_loss / total_e_consumptions,
+            "total_e_loss_wh": total_e_loss * 60 / 3600
+        }
+        return cluster_metrics
+    
+    # inner loop
+    def _has_cluster_loop(self, inner_edges, upstream_boundaries, incoming_edges, downstream_boundaries, out_going_edges):
+        list_edges = []
+        for e in inner_edges:
+            (u,v) = self.edges_nodes[e]
+            list_edges.append((u,v))
+        g = nx.DiGraph(list_edges)
+        try:
+            nx.find_cycle(g, orientation='ignore')
+            is_loop = True 
+        except Exception as ex:
+            is_loop = False
+
+        return is_loop
+    
+
+    # All metrics of a cluster
+    def compute_cluster_all_metrics(self, cluster_of_nodes, key_cluster: str = ""):
+
+        cluster_metrics = {}
+
+        cluster_metrics['key'] = key_cluster
+        cluster_metrics['nodes'] = cluster_of_nodes
+        cluster_metrics['size'] = len(cluster_of_nodes)
+
+        inner_edges, upstream_nodes, incoming_edges, downstream_nodes, out_going_edges, topological_qualities = self.get_cluster_boundary_nodes_with_qualities(cluster_of_nodes)
+        
+        cluster_metrics['cluster_has_loop'] = self._has_cluster_loop(inner_edges, upstream_nodes, incoming_edges, downstream_nodes, out_going_edges)
+
+        for key in topological_qualities:
+            cluster_metrics[key] = topological_qualities[key]
+
+        metrics_delay = self._compute_cluster_delay_time(inner_edges, upstream_nodes, incoming_edges, downstream_nodes, out_going_edges)
+        for key in metrics_delay:
+            cluster_metrics[key] = metrics_delay[key]
+
+        metrics_losses = self._compute_thermal_losses(cluster_of_nodes, inner_edges, upstream_nodes, incoming_edges, downstream_nodes, out_going_edges)
+        for key in metrics_losses:
+            cluster_metrics[key] = metrics_losses[key]
+
+        metrics_tr_ts = self._get_ts_tr_distances(inner_edges, upstream_nodes, incoming_edges, downstream_nodes, out_going_edges)
+        for key in metrics_tr_ts:
+            cluster_metrics[key] = metrics_tr_ts[key]
+
+        return cluster_metrics

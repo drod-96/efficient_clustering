@@ -55,6 +55,10 @@ class ClusteringDHN(object):
         
         self._saved_cluster_losses = {} # loss of clusters already computed, clusters are in julia index
         self._saved_cluster_cut_ratios = {}
+
+    # def compute_fitness_cluster(self, cluster):
+    #     # all metrics
+    #     cluster_metrics = self.dhn.compute_cluster_all_metrics(cluster)
     
     def set_distance_matrix(self):
         """Creates the distance matrix based on task driven distance matrices D = D^{(topology)} + D^{(temperature)}, 
@@ -617,6 +621,8 @@ class ClusteringDHN(object):
                 if key_cluster not in self.all_clusters_keys:
                     self.all_clusters.append(cluster)
                     self.all_clusters_keys.append(key_cluster)
+    
+    
     #endregion
     
     #region Saving/loading/training
@@ -676,17 +682,24 @@ class ClusteringDHN(object):
             ds = np.load(file_path, allow_pickle=True)
             self._temperature_distances_matrix = ds['arr_0']
                     
-    def save_clustering_results(self):
+    def save_clustering_results(self, with_post_processing):
         df = pd.DataFrame.from_records(self.all_clustering_results_metrics)
         folder = os.path.join('clustering_saved', f'dhn_{self.dhn_indicator}')
         if not os.path.isdir(folder):
             os.makedirs(folder)
-            
-        df.to_csv(os.path.join(folder, 'clustering_results.csv'))
         
-    def load_clustering_results(self):
+        if with_post_processing:
+            df.to_csv(os.path.join(folder, 'clustering_results_with_post_processing.csv'))
+        else:
+            df.to_csv(os.path.join(folder, 'clustering_results.csv'))
+        
+    def load_clustering_results(self, with_post_processing):
         folder = os.path.join('clustering_saved', f'dhn_{self.dhn_indicator}')
-        file_path = os.path.join(folder, 'clustering_results.csv')
+        if with_post_processing:
+            file_path = os.path.join(folder, 'clustering_results_with_post_processing.csv')
+        else:
+            file_path = os.path.join(folder, 'clustering_results.csv')
+
         if os.path.isfile(file_path):
             df = pd.read_csv(file_path, index_col=0)
             self.all_clustering_results_metrics = df.to_dict(orient='records')
