@@ -1794,6 +1794,27 @@ class DistrictHeatingNetworkFromExcel(object):
         max_outdegree_fraction = np.max(np.array(nodes_outdegree_fraction))
         average_indegree_fraction = np.mean(np.array(nodes_indegree_fraction))
         max_indegree_fraction = np.max(np.array(nodes_indegree_fraction))
+
+        # Mean pipes properties
+        mean_length = 0
+        mean_diameter = 0
+        mean_volume_pipes = 0
+        mean_velocity = 0
+        for e in inner_edges:
+            row = self.edge_features_v2.iloc[e]
+            d = row['diameter']
+            # tau = row['delay_time']
+            vel = row['velocity']
+            l = row['length']
+            mean_diameter += d
+            mean_length += l
+            mean_volume_pipes += np.pi*l*((d/2)**2)
+            mean_velocity += vel
+        
+        mean_length /= len(inner_edges)
+        mean_diameter /= len(inner_edges)
+        mean_volume_pipes /= len(inner_edges)
+        mean_velocity /= len(inner_edges)
         
         # print(nodes_internal_indegree.values())
         # Qualities = [density, total inner degree, total external degree, cluster volume, cut size, cut ratio, conductance, cut value, max diameter]
@@ -1803,15 +1824,25 @@ class DistrictHeatingNetworkFromExcel(object):
             'internal_degree': n_e,
             'scaled_density': scaled_density,
 
-            # Indegree of nodes
+            # Internal Indegree of nodes
             'nodes_mean_internal_indegree': sum(nodes_internal_indegree.values()) / len(nodes_internal_indegree),
             'nodes_sum_internal_indegree': sum(nodes_internal_indegree.values()),
             'nodes_max_internal_indegree': max(nodes_internal_indegree.values()),
 
-            # Outdegree of nodes
+            # Internal Outdegree of nodes
             'nodes_mean_internal_outdegree': sum(nodes_internal_outdegree.values()) / len(nodes_internal_outdegree),
             'nodes_sum_internal_outdegree': sum(nodes_internal_outdegree.values()),
             'nodes_max_internal_outdegree': max(nodes_internal_outdegree.values()),
+
+            # External indegree of nodes
+            'nodes_mean_external_indegree': sum(nodes_external_indegree.values()) / len(nodes_external_indegree),
+            'nodes_sum_external_indegree': sum(nodes_external_indegree.values()),
+            'nodes_max_external_indegree': max(nodes_external_indegree.values()),
+
+            # External indegree of nodes
+            'nodes_mean_external_outdegree': sum(nodes_external_outdegree.values()) / len(nodes_external_outdegree),
+            'nodes_sum_external_outdegree': sum(nodes_external_outdegree.values()),
+            'nodes_max_external_outdegree': max(nodes_external_outdegree.values()),
 
             # Indegree + Outdegree of nodes
             'nodes_mean_internal_degree': sum(nodes_total_degree.values()) / len(nodes_total_degree),
@@ -1831,9 +1862,14 @@ class DistrictHeatingNetworkFromExcel(object):
 
             'nb_upstream_interfaces': len(upstream_boundaries),
             'nb_downstream_interfaces': len(downstream_boundaries),
+            'nb_interfaces': len(upstream_boundaries) + len(downstream_boundaries),
             
             # Surface
             'max_diameter': max_diameter,
+            'mean_pipe_length': mean_length,
+            'mean_pipe_diameter': mean_diameter,
+            'mean_pipe_volume': mean_volume_pipes,
+            'mean_water_velocity': mean_velocity,
         }
 
         return inner_edges, upstream_boundaries, in_going_edges, downstream_boundaries, out_going_edges, qualities
